@@ -35,13 +35,13 @@ dependencies = [
 
 [project.optional-dependencies]
 loma = [
-  "lomatch @ git+ssh://git@github.com/PengZai/LoMa.git",
+  "lomatch @ git+https://github.com/PengZai/LoMa.git",
 ]
 roma = [
-  "romatch @ git+ssh://git@github.com/PengZai/RoMa.git",
+  "romatch @ git+https://github.com/PengZai/RoMa.git",
 ]
 romav2 = [
-  "romav2 @ git+ssh://git@github.com/PengZai/RoMaV2.git",
+  "romav2 @ git+https://github.com/PengZai/RoMaV2.git",
 ]
 loftr = []
 superpoint = []
@@ -49,15 +49,15 @@ efficientloftr = [
   "transformers",
 ]
 examples = [
-  "lomatch @ git+ssh://git@github.com/PengZai/LoMa.git",
-  "romatch @ git+ssh://git@github.com/PengZai/RoMa.git",
-  "romav2 @ git+ssh://git@github.com/PengZai/RoMaV2.git",
+  "lomatch @ git+https://github.com/PengZai/LoMa.git",
+  "romatch @ git+https://github.com/PengZai/RoMa.git",
+  "romav2 @ git+https://github.com/PengZai/RoMaV2.git",
   "transformers",
 ]
 all-examples = [
-  "lomatch @ git+ssh://git@github.com/PengZai/LoMa.git",
-  "romatch @ git+ssh://git@github.com/PengZai/RoMa.git",
-  "romav2 @ git+ssh://git@github.com/PengZai/RoMaV2.git",
+  "lomatch @ git+https://github.com/PengZai/LoMa.git",
+  "romatch @ git+https://github.com/PengZai/RoMa.git",
+  "romav2 @ git+https://github.com/PengZai/RoMaV2.git",
   "transformers",
 ]
 
