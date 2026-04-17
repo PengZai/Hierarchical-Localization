@@ -1,0 +1,75 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hloc"
+dynamic = ["version", "readme"]
+description = "Tools and baselines for visual localization and mapping"
+authors = [
+  { name = "Paul-Edouard Sarlin" },
+]
+requires-python = ">=3.6"
+license = { text = "Apache-2.0" }
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: Apache Software License",
+  "Operating System :: OS Independent",
+]
+dependencies = [
+  "torch==2.10.0+cu128",
+  "torchvision==0.25.0+cu128",
+  "numpy",
+  "opencv-python",
+  "tqdm>=4.36.0",
+  "matplotlib",
+  "plotly",
+  "scipy",
+  "h5py",
+  "pycolmap>=3.13.0",
+  "kornia>=0.6.11",
+  "gdown",
+  "packaging",
+  "lightglue @ git+https://github.com/cvg/LightGlue",
+]
+
+[project.optional-dependencies]
+loma = [
+  "lomatch @ git+ssh://git@github.com/PengZai/LoMa.git",
+]
+roma = [
+  "romatch @ git+ssh://git@github.com/PengZai/RoMa.git",
+]
+romav2 = [
+  "romav2 @ git+ssh://git@github.com/PengZai/RoMaV2.git",
+]
+loftr = []
+superpoint = []
+efficientloftr = [
+  "transformers",
+]
+examples = [
+  "lomatch @ git+ssh://git@github.com/PengZai/LoMa.git",
+  "romatch @ git+ssh://git@github.com/PengZai/RoMa.git",
+  "romav2 @ git+ssh://git@github.com/PengZai/RoMaV2.git",
+  "transformers",
+]
+all-examples = [
+  "lomatch @ git+ssh://git@github.com/PengZai/LoMa.git",
+  "romatch @ git+ssh://git@github.com/PengZai/RoMa.git",
+  "romav2 @ git+ssh://git@github.com/PengZai/RoMaV2.git",
+  "transformers",
+]
+
+[project.urls]
+Homepage = "https://github.com/cvg/Hierarchical-Localization/"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+include = ["hloc*"]
+
+[tool.setuptools.dynamic]
+version = { attr = "hloc.__version__" }
+readme = { file = ["README.md"], content-type = "text/markdown" }

@@ -60,6 +60,45 @@ confs = {
         "max_error": 4,  # max error for assigned keypoints (in px)
         "cell_size": 4,  # size of quantization patch (max 1 kp/patch)
     },
+    "roma": {
+        "output": "matches-roma",
+        "model": {
+            "name": "roma",
+            "weights": "outdoor",
+            "coarse_res": 560,
+            "upsample_res": 864,
+            "sample_thresh": 0.05,
+            "sample_num": 10000,
+            "use_custom_corr": False,
+            "upsample_preds": False,
+        },
+        "preprocessing": {"grayscale": False, "resize_max": 1024, "dfactor": 8},
+        "max_error": 2,
+        "cell_size": 8,
+    },
+    "romav2": {
+        "output": "matches-romav2",
+        "model": {
+            "name": "romav2",
+            "setting": "precise",
+            "sample_num": 10000,
+            "compile": False,
+        },
+        "preprocessing": {"grayscale": False, "resize_max": 1024, "dfactor": 8},
+        "max_error": 2,
+        "cell_size": 8,
+    },
+    "efficient_loftr": {
+        "output": "matches-efficientloftr",
+        "model": {
+            "name": "efficient_loftr",
+            "model_name": "zju-community/efficientloftr",
+            "threshold": 0.2,
+        },
+        "preprocessing": {"grayscale": False, "resize_max": 1024, "dfactor": 8},
+        "max_error": 2,
+        "cell_size": 8,
+    },
 }
 
 
