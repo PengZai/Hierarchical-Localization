@@ -32,7 +32,7 @@ python -m pip install -e .
 
 All dependencies are listed in `requirements.txt`. **Starting with `hloc-v1.3`, installing COLMAP is not required anymore.** This repository includes external local features as git submodules – don't forget to pull submodules with `git submodule update --init --recursive`.
 
-If you use the LoMa-based pipelines from `third_party/LoMa`, the first run downloads model weights with `torch.hub`. In environments where the default home cache is not writable, `pipeline_loma_SfM.py` automatically redirects those caches to `/tmp`.
+If you use the LoMa-based pipelines from `third_party/LoMa`, the first run downloads model weights with `torch.hub`. In environments where the default home cache is not writable, `pipeline_loma_sparse_SfM.py` automatically redirects those caches to `/tmp`.
 
 We also provide a Docker image:
 ```bash
