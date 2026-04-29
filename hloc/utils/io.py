@@ -69,14 +69,64 @@ def find_pair(hfile: h5py.File, name0: str, name1: str):
 def get_matches(path: Path, name0: str, name1: str) -> Tuple[np.ndarray]:
     with h5py.File(str(path), "r", libver="latest") as hfile:
         pair, reverse = find_pair(hfile, name0, name1)
-        matches = hfile[pair]["matches0"].__array__()
-        scores = hfile[pair]["matching_scores0"].__array__()
+        grp = hfile[pair]
+        matches = grp["matches0"].__array__()
+        if "matching_scores0" in grp:
+            scores = grp["matching_scores0"].__array__()
+        else:
+            scores = np.ones_like(matches, dtype=np.float32)
     idx = np.where(matches != -1)[0]
     matches = np.stack([idx, matches[idx]], -1)
     if reverse:
         matches = np.flip(matches, -1)
     scores = scores[idx]
     return matches, scores
+
+
+def get_dense_pair_matches(
+    path: Path, name0: str, name1: str
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    with h5py.File(str(path), "r", libver="latest") as hfile:
+        pair, reverse = find_pair(hfile, name0, name1)
+        grp = hfile[pair]
+        matches0 = grp["matches0"].__array__()
+        if "matching_scores0" in grp:
+            scores0 = grp["matching_scores0"].__array__()
+        else:
+            scores0 = np.ones_like(matches0, dtype=np.float32)
+        keypoints0 = grp["keypoints0"].__array__()
+        keypoints1 = grp["keypoints1"].__array__()
+
+    idx0 = np.where(matches0 != -1)[0]
+    idx1 = matches0[idx0]
+    matched0 = keypoints0[idx0]
+    matched1 = keypoints1[idx1]
+    scores = scores0[idx0]
+
+    if reverse:
+        matched0, matched1 = matched1, matched0
+    return matched0, matched1, scores
+
+
+def get_feature_pair_matches(
+    feature_path_q: Path,
+    feature_path_r: Path,
+    match_path: Path,
+    name0: str,
+    name1: str,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    matches, scores = get_matches(match_path, name0, name1)
+    keypoints0 = get_keypoints(feature_path_q, name0)
+    keypoints1 = get_keypoints(feature_path_r, name1)
+    if len(matches) == 0:
+        return (
+            np.empty((0, 2), dtype=np.float32),
+            np.empty((0, 2), dtype=np.float32),
+            scores,
+        )
+    matched0 = keypoints0[matches[:, 0]]
+    matched1 = keypoints1[matches[:, 1]]
+    return matched0, matched1, scores
 
 
 def write_poses(

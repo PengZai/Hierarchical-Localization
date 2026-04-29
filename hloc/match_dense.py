@@ -507,6 +507,92 @@ def assign_matches(
             grp.create_dataset("matching_scores0", data=scores0)
 
 
+def summarize_matches(
+    pairs: List[Tuple[str, str]],
+    match_path: Path,
+) -> Dict[str, Union[int, float, np.ndarray]]:
+    unique_pairs = []
+    seen = set()
+    for name0, name1 in pairs:
+        pair_key = tuple(sorted((name0, name1)))
+        if pair_key in seen:
+            continue
+        seen.add(pair_key)
+        unique_pairs.append((name0, name1))
+
+    pair_valid_matches = []
+    image_valid_match_totals = Counter()
+    image_pair_counts = Counter()
+    with h5py.File(str(match_path), "r", libver="latest") as fd:
+        for name0, name1 in unique_pairs:
+            pair = names_to_pair(name0, name1)
+            if pair not in fd:
+                pair = names_to_pair(name1, name0)
+            valid_matches = int(np.count_nonzero(fd[pair]["matches0"].__array__() != -1))
+            pair_valid_matches.append(valid_matches)
+            image_valid_match_totals[name0] += valid_matches
+            image_valid_match_totals[name1] += valid_matches
+            image_pair_counts[name0] += 1
+            image_pair_counts[name1] += 1
+
+    pair_valid_matches = np.asarray(pair_valid_matches, dtype=np.int32)
+    image_valid_match_totals_dict = dict(image_valid_match_totals)
+    image_valid_match_totals = np.asarray(
+        list(image_valid_match_totals_dict.values()), dtype=np.int32
+    )
+    image_avg_valid_matches = np.asarray(
+        [
+            image_valid_match_totals_dict[name] / image_pair_counts[name]
+            for name in image_valid_match_totals_dict
+        ],
+        dtype=np.float32,
+    )
+    image_pair_counts = np.asarray(list(image_pair_counts.values()), dtype=np.int32)
+    return {
+        "num_pairs": len(unique_pairs),
+        "num_images": len(image_pair_counts),
+        "pair_valid_matches": pair_valid_matches,
+        "image_valid_match_totals": image_valid_match_totals,
+        "image_avg_valid_matches": image_avg_valid_matches,
+        "image_pair_counts": image_pair_counts,
+    }
+
+
+def _format_match_stats(values: np.ndarray) -> Tuple[float, float, float, float]:
+    if values.size == 0:
+        return 0.0, 0.0, 0.0, 0.0
+    return (
+        float(np.mean(values)),
+        float(np.median(values)),
+        float(np.min(values)),
+        float(np.max(values)),
+    )
+
+
+def log_match_summary(
+    pairs: List[Tuple[str, str]],
+    match_path: Path,
+    label: str,
+) -> Dict[str, Union[int, float, np.ndarray]]:
+    summary = summarize_matches(pairs, match_path)
+    pair_stats = _format_match_stats(summary["pair_valid_matches"])
+    image_total_stats = _format_match_stats(summary["image_valid_match_totals"])
+    image_avg_stats = _format_match_stats(summary["image_avg_valid_matches"])
+    degree_stats = _format_match_stats(summary["image_pair_counts"])
+    logger.info(
+        "%s: valid matches/pair mean/med/min/max %.1f/%.1f/%.1f/%.1f; "
+        "total valid matches/image mean/med/min/max %.1f/%.1f/%.1f/%.1f; "
+        "avg valid matches/connected pair per image mean/med/min/max %.1f/%.1f/%.1f/%.1f; "
+        "connected pairs/image mean %.1f.",
+        label,
+        *pair_stats,
+        *image_total_stats,
+        *image_avg_stats,
+        degree_stats[0],
+    )
+    return summary
+
+
 @torch.no_grad()
 def match_and_assign(
     conf: Dict,
@@ -566,11 +652,13 @@ def match_and_assign(
         cpdict=cpdict,
         bindict=bindict,
     )
+    log_match_summary(pairs, match_path, "Assigned matches after aggregation")
 
     # Invalidate matches that are far from selected bin by reassignment
     if max_kps is not None:
         logger.info(f'Reassign matches with max_error={conf["max_error"]}.')
         assign_matches(pairs, match_path, cpdict, max_error=conf["max_error"])
+        log_match_summary(pairs, match_path, "Assigned matches after reassignment")
 
 
 @torch.no_grad()

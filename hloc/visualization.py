@@ -1,12 +1,27 @@
 import pickle
 import random
+from pathlib import Path
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pycolmap
 from matplotlib import cm
 
-from .utils.io import read_image
-from .utils.viz import add_text, cm_RdGn, plot_images, plot_keypoints, plot_matches
+from .utils.io import (
+    get_dense_pair_matches,
+    get_feature_pair_matches,
+    get_matches,
+    read_image,
+)
+from .utils.parsers import parse_retrieval
+from .utils.viz import (
+    add_text,
+    cm_RdGn,
+    plot_images,
+    plot_keypoints,
+    plot_matches,
+    save_plot,
+)
 
 
 def visualize_sfm_2d(
@@ -163,3 +178,271 @@ def visualize_loc_from_log(
         opts = dict(pos=(0.01, 0.01), fs=5, lcolor=None, va="bottom")
         add_text(0, query_name, **opts)
         add_text(1, db_name, **opts)
+
+
+def _get_unique_pairs(pairs_path):
+    pairs_dict = parse_retrieval(pairs_path)
+    unique_pairs = []
+    seen = set()
+    for name0, names1 in pairs_dict.items():
+        for name1 in names1:
+            key = tuple(sorted((name0, name1)))
+            if key in seen:
+                continue
+            seen.add(key)
+            unique_pairs.append((name0, name1))
+    return unique_pairs
+
+
+def summarize_match_assignments(matches_path, pairs_path):
+    pair_stats = []
+    image_totals = {}
+    image_degrees = {}
+    for name0, name1 in _get_unique_pairs(pairs_path):
+        _, scores = get_matches(matches_path, name0, name1)
+        valid_matches = len(scores)
+        pair_stats.append(
+            {
+                "pair": (name0, name1),
+                "valid_matches": valid_matches,
+                "mean_score": float(np.mean(scores)) if valid_matches else 0.0,
+            }
+        )
+        for name in (name0, name1):
+            image_totals[name] = image_totals.get(name, 0) + valid_matches
+            image_degrees[name] = image_degrees.get(name, 0) + 1
+
+    image_stats = [
+        {
+            "name": name,
+            "total_valid_matches": image_totals[name],
+            "connected_pairs": image_degrees[name],
+            "avg_valid_matches": image_totals[name] / image_degrees[name],
+        }
+        for name in sorted(image_totals)
+    ]
+    return pair_stats, image_stats
+
+
+def summarize_dense_matches(matches_path, pairs_path):
+    return summarize_match_assignments(matches_path, pairs_path)
+
+
+def visualize_dense_match_summary(
+    matches_path,
+    pairs_path,
+    output_path=None,
+    dpi=100,
+    close=False,
+):
+    pair_stats, image_stats = summarize_match_assignments(matches_path, pairs_path)
+    pair_counts = np.array([s["valid_matches"] for s in pair_stats], dtype=np.float32)
+    image_totals = np.array(
+        [s["total_valid_matches"] for s in image_stats], dtype=np.float32
+    )
+    image_avgs = np.array([s["avg_valid_matches"] for s in image_stats], dtype=np.float32)
+
+    plt.figure(figsize=(15, 4), dpi=dpi)
+    axes = [plt.subplot(1, 3, i + 1) for i in range(3)]
+    stats = [
+        (pair_counts, "Valid matches / pair"),
+        (image_totals, "Total valid matches / image"),
+        (image_avgs, "Avg valid matches / connected pair / image"),
+    ]
+    for ax, (values, title) in zip(axes, stats):
+        ax.hist(values, bins=min(20, max(len(values), 1)), color="#2c7fb8", alpha=0.85)
+        ax.set_title(title)
+        ax.set_xlabel("count")
+        ax.set_ylabel("frequency")
+        if len(values) > 0:
+            ax.axvline(values.mean(), color="#d95f0e", linestyle="--", linewidth=1.5)
+            ax.text(
+                0.02,
+                0.95,
+                f"mean={values.mean():.1f}\nmedian={np.median(values):.1f}\nmin={values.min():.1f}\nmax={values.max():.1f}",
+                transform=ax.transAxes,
+                va="top",
+                ha="left",
+                fontsize=9,
+                bbox={"facecolor": "white", "alpha": 0.75, "edgecolor": "none"},
+            )
+    plt.suptitle("Match summary")
+    plt.tight_layout()
+
+    if output_path is not None:
+        output_path = Path(output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        save_plot(output_path)
+    if close:
+        plt.close(plt.gcf())
+
+
+def visualize_match_summary(
+    matches_path,
+    pairs_path,
+    output_path=None,
+    dpi=100,
+    close=False,
+):
+    visualize_dense_match_summary(
+        matches_path,
+        pairs_path,
+        output_path=output_path,
+        dpi=dpi,
+        close=close,
+    )
+
+
+def _select_representative_pairs(pair_stats, num_pairs):
+    if num_pairs <= 0:
+        return []
+    sorted_stats = sorted(pair_stats, key=lambda stat: stat["valid_matches"], reverse=True)
+    if len(sorted_stats) <= num_pairs:
+        return sorted_stats
+    spread = np.linspace(0, len(sorted_stats) - 1, num_pairs).round().astype(int)
+    selected = []
+    seen = set()
+    for idx in spread:
+        pair = sorted_stats[idx]["pair"]
+        if pair in seen:
+            continue
+        seen.add(pair)
+        selected.append(sorted_stats[idx])
+    return selected
+
+
+def _scores_to_colors(scores):
+    if len(scores) == 0:
+        return []
+    score_min, score_max = float(np.min(scores)), float(np.max(scores))
+    if score_max > score_min:
+        normalized = (scores - score_min) / (score_max - score_min)
+    else:
+        normalized = np.ones_like(scores)
+    return cm_RdGn(normalized).tolist()
+
+
+def visualize_dense_matches(
+    matches_path,
+    pairs_path,
+    image_dir,
+    output_dir=None,
+    num_pairs=6,
+    max_plot_matches=300,
+    dpi=100,
+    close=False,
+):
+    pair_stats, _ = summarize_match_assignments(matches_path, pairs_path)
+    selected = _select_representative_pairs(pair_stats, num_pairs)
+    output_dir = Path(output_dir) if output_dir is not None else None
+    if output_dir is not None:
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+    for rank, stat in enumerate(selected):
+        name0, name1 = stat["pair"]
+        image0 = read_image(Path(image_dir) / name0)
+        image1 = read_image(Path(image_dir) / name1)
+        matched0, matched1, scores = get_dense_pair_matches(matches_path, name0, name1)
+
+        if len(scores) > max_plot_matches:
+            order = np.argsort(scores)[::-1][:max_plot_matches]
+            matched0, matched1, scores = matched0[order], matched1[order], scores[order]
+
+        plot_images(
+            [image0, image1],
+            titles=[Path(name0).name, Path(name1).name],
+            dpi=dpi,
+        )
+        if len(scores) > 0:
+            plot_matches(
+                matched0,
+                matched1,
+                color=_scores_to_colors(scores),
+                lw=0.8,
+                ps=2,
+                a=0.5,
+            )
+
+        add_text(
+            0,
+            f"valid matches: {stat['valid_matches']} | shown: {len(scores)} | mean score: {stat['mean_score']:.3f}",
+        )
+        opts = dict(pos=(0.01, 0.01), fs=6, lcolor=None, va="bottom")
+        add_text(0, name0, **opts)
+        add_text(1, name1, **opts)
+
+        if output_dir is not None:
+            stem0 = Path(name0).stem.replace("/", "_")
+            stem1 = Path(name1).stem.replace("/", "_")
+            filename = f"{rank:02d}_{stem0}__{stem1}.png"
+            save_plot(output_dir / filename)
+        if close:
+            plt.close(plt.gcf())
+
+
+def visualize_feature_matches(
+    feature_path_q,
+    matches_path,
+    pairs_path,
+    image_dir,
+    output_dir=None,
+    num_pairs=6,
+    max_plot_matches=300,
+    dpi=100,
+    close=False,
+    feature_path_r=None,
+):
+    pair_stats, _ = summarize_match_assignments(matches_path, pairs_path)
+    selected = _select_representative_pairs(pair_stats, num_pairs)
+    feature_path_q = Path(feature_path_q)
+    feature_path_r = feature_path_q if feature_path_r is None else Path(feature_path_r)
+    output_dir = Path(output_dir) if output_dir is not None else None
+    if output_dir is not None:
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+    for rank, stat in enumerate(selected):
+        name0, name1 = stat["pair"]
+        image0 = read_image(Path(image_dir) / name0)
+        image1 = read_image(Path(image_dir) / name1)
+        matched0, matched1, scores = get_feature_pair_matches(
+            feature_path_q,
+            feature_path_r,
+            matches_path,
+            name0,
+            name1,
+        )
+
+        if len(scores) > max_plot_matches:
+            order = np.argsort(scores)[::-1][:max_plot_matches]
+            matched0, matched1, scores = matched0[order], matched1[order], scores[order]
+
+        plot_images(
+            [image0, image1],
+            titles=[Path(name0).name, Path(name1).name],
+            dpi=dpi,
+        )
+        if len(scores) > 0:
+            plot_matches(
+                matched0,
+                matched1,
+                color=_scores_to_colors(scores),
+                lw=0.8,
+                ps=2,
+                a=0.5,
+            )
+
+        add_text(
+            0,
+            f"valid matches: {stat['valid_matches']} | shown: {len(scores)} | mean score: {stat['mean_score']:.3f}",
+        )
+        opts = dict(pos=(0.01, 0.01), fs=6, lcolor=None, va="bottom")
+        add_text(0, name0, **opts)
+        add_text(1, name1, **opts)
+
+        if output_dir is not None:
+            stem0 = Path(name0).stem.replace("/", "_")
+            stem1 = Path(name1).stem.replace("/", "_")
+            filename = f"{rank:02d}_{stem0}__{stem1}.png"
+            save_plot(output_dir / filename)
+        if close:
+            plt.close(plt.gcf())

@@ -1,4 +1,5 @@
 import argparse
+import ast
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -237,25 +238,104 @@ def main(
     return reconstruction
 
 
+def flatten_option_defaults(default_options) -> Dict[str, Any]:
+    flattened = {}
+    for key, value in default_options.todict().items():
+        if isinstance(value, dict):
+            for nested_key, nested_value in value.items():
+                flattened[f"{key}.{nested_key}"] = nested_value
+        else:
+            flattened[key] = value
+    return flattened
+
+
+def get_mapper_default_options():
+    if hasattr(pycolmap, "IncrementalPipelineOptions"):
+        return pycolmap.IncrementalPipelineOptions()
+    return pycolmap.IncrementalMapperOptions()
+
+
+def get_mapper_option_help() -> Dict[str, Any]:
+    return flatten_option_defaults(get_mapper_default_options())
+
+
+def parse_mapper_option_args(args: List[str]) -> Dict[str, Any]:
+    return parse_option_args(args, get_mapper_default_options())
+
+
+def _coerce_option_value(key: str, raw_value: str, default_value: Any) -> Any:
+    target_type = type(default_value)
+    if target_type is str:
+        return raw_value.strip("\"'")
+    if issubclass(target_type, Path):
+        return target_type(raw_value.strip("\"'"))
+    try:
+        value = ast.literal_eval(raw_value)
+    except (SyntaxError, ValueError):
+        value = raw_value
+
+    if isinstance(default_value, float) and isinstance(value, (int, float)) and not isinstance(value, bool):
+        return float(value)
+    if isinstance(default_value, int) and isinstance(value, int) and not isinstance(value, bool):
+        return value
+    if isinstance(default_value, bool) and isinstance(value, bool):
+        return value
+
+    if hasattr(target_type, raw_value):
+        value = getattr(target_type, raw_value)
+
+    if not isinstance(value, target_type):
+        raise ValueError(
+            f'Incorrect type for option "{key}": {type(value)} vs {target_type}'
+        )
+    return value
+
+
+def _resolve_option_path(key: str, default_options) -> tuple[List[str], Any]:
+    if "." in key:
+        path = key.split(".")
+        current = default_options
+        for part in path:
+            if not hasattr(current, part):
+                raise ValueError(
+                    f'Unknown option "{key}", allowed options and default values '
+                    f"are {flatten_option_defaults(default_options)}"
+                )
+            current = getattr(current, part)
+        return path, current
+
+    if hasattr(default_options, key):
+        return [key], getattr(default_options, key)
+
+    for nested_key in ("mapper", "triangulation"):
+        if hasattr(default_options, nested_key):
+            nested_options = getattr(default_options, nested_key)
+            if hasattr(nested_options, key):
+                return [nested_key, key], getattr(nested_options, key)
+
+    raise ValueError(
+        f'Unknown option "{key}", allowed options and default values are '
+        f"{flatten_option_defaults(default_options)}"
+    )
+
+
+def _set_nested_option(options: Dict[str, Any], path: List[str], value: Any):
+    target = options
+    for key in path[:-1]:
+        target = target.setdefault(key, {})
+    target[path[-1]] = value
+
+
 def parse_option_args(args: List[str], default_options) -> Dict[str, Any]:
     options = {}
     for arg in args:
         idx = arg.find("=")
         if idx == -1:
             raise ValueError("Options format: key1=value1 key2=value2 etc.")
-        key, value = arg[:idx], arg[idx + 1 :]
-        if not hasattr(default_options, key):
-            raise ValueError(
-                f'Unknown option "{key}", allowed options and default values'
-                f" for {default_options.summary()}"
-            )
-        value = eval(value)
-        target_type = type(getattr(default_options, key))
-        if not isinstance(value, target_type):
-            raise ValueError(
-                f'Incorrect type for option "{key}":' f" {type(value)} vs {target_type}"
-            )
-        options[key] = value
+        key, raw_value = arg[:idx], arg[idx + 1 :]
+        path, default_value = _resolve_option_path(key, default_options)
+        value = _coerce_option_value(key, raw_value, default_value)
+        _set_nested_option(options, path, value)
     return options
 
 
@@ -272,10 +352,18 @@ if __name__ == "__main__":
     parser.add_argument("--skip_geometric_verification", action="store_true")
     parser.add_argument("--min_match_score", type=float)
     parser.add_argument("--verbose", action="store_true")
+    parser.add_argument(
+        "--mapper_options",
+        nargs="+",
+        default=[],
+        help=(
+            "List of key=value mapper options. Accepts flat mapper keys like "
+            "init_min_tri_angle=2.0 or dotted pipeline keys like "
+            f"mapper.init_min_tri_angle=2.0 from {get_mapper_option_help()}"
+        ),
+    )
     args = parser.parse_args().__dict__
 
-    mapper_options = parse_option_args(
-        args.pop("mapper_options"), pycolmap.IncrementalMapperOptions()
-    )
+    mapper_options = parse_mapper_option_args(args.pop("mapper_options"))
 
     main(**args, mapper_options=mapper_options)

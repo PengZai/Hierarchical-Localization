@@ -11,9 +11,11 @@ from . import logger
 from .triangulation import (
     OutputCapture,
     estimation_and_geometric_verification,
+    get_mapper_option_help,
     import_features,
     import_matches,
     parse_option_args,
+    parse_mapper_option_args,
 )
 
 
@@ -218,8 +220,10 @@ if __name__ == "__main__":
         "--mapper_options",
         nargs="+",
         default=[],
-        help="List of key=value from {}".format(
-            pycolmap.IncrementalMapperOptions().todict()
+        help=(
+            "List of key=value mapper options. Accepts flat mapper keys like "
+            "init_min_tri_angle=2.0 or dotted pipeline keys like "
+            f"mapper.init_min_tri_angle=2.0 from {get_mapper_option_help()}"
         ),
     )
     args = parser.parse_args().__dict__
@@ -227,8 +231,6 @@ if __name__ == "__main__":
     image_options = parse_option_args(
         args.pop("image_options"), pycolmap.ImageReaderOptions()
     )
-    mapper_options = parse_option_args(
-        args.pop("mapper_options"), pycolmap.IncrementalMapperOptions()
-    )
+    mapper_options = parse_mapper_option_args(args.pop("mapper_options"))
 
     main(**args, image_options=image_options, mapper_options=mapper_options)
