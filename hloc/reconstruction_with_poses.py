@@ -89,6 +89,7 @@ def run_reconstruction_with_poses(
     verbose: bool = False,
     triangulation_options: Optional[Dict[str, Any]] = None,
     bundle_adjustment_options: Optional[Dict[str, Any]] = None,
+    refine: bool = True,
 ) -> pycolmap.Reconstruction:
     sfm_dir.mkdir(parents=True, exist_ok=True)
     logger.info("Running triangulation from the provided initial camera poses...")
@@ -100,11 +101,16 @@ def run_reconstruction_with_poses(
             sfm_dir,
             options=triangulation_options or {},
         )
-        logger.info("Refining the initialized reconstruction with bundle adjustment...")
-        pycolmap.bundle_adjustment(
-            reconstruction,
-            pycolmap.BundleAdjustmentOptions(bundle_adjustment_options or {}),
-        )
+        if refine:
+            logger.info(
+                "Refining the initialized reconstruction with bundle adjustment..."
+            )
+            pycolmap.bundle_adjustment(
+                reconstruction,
+                pycolmap.BundleAdjustmentOptions(bundle_adjustment_options or {}),
+            )
+        else:
+            logger.info("Skipping bundle adjustment refinement.")
     return reconstruction
 
 
@@ -123,6 +129,7 @@ def main(
     image_options: Optional[Dict[str, Any]] = None,
     triangulation_options: Optional[Dict[str, Any]] = None,
     bundle_adjustment_options: Optional[Dict[str, Any]] = None,
+    refine: bool = True,
 ) -> pycolmap.Reconstruction:
     assert features.exists(), features
     assert pairs.exists(), pairs
@@ -155,13 +162,14 @@ def main(
     pose_dict = parse_image_poses(poses)
     reference = create_reference_reconstruction(database, pose_dict)
     reconstruction = run_reconstruction_with_poses(
-        sfm_dir,
-        database,
-        image_dir,
-        reference,
-        verbose,
-        triangulation_options,
-        bundle_adjustment_options,
+        sfm_dir=sfm_dir,
+        database_path=database,
+        image_dir=image_dir,
+        reference=reference,
+        verbose=verbose,
+        triangulation_options=triangulation_options,
+        bundle_adjustment_options=bundle_adjustment_options,
+        refine=refine,
     )
     logger.info(
         f"Reconstruction statistics:\n{reconstruction.summary()}"
@@ -187,6 +195,12 @@ if __name__ == "__main__":
     parser.add_argument("--skip_geometric_verification", action="store_true")
     parser.add_argument("--min_match_score", type=float)
     parser.add_argument("--verbose", action="store_true")
+    parser.add_argument(
+        "--skip_bundle_adjustment",
+        action="store_false",
+        dest="refine",
+        help="Skip bundle adjustment after triangulation.",
+    )
     parser.add_argument(
         "--image_options",
         nargs="+",
