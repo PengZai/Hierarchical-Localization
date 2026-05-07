@@ -141,13 +141,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "--dataset",
         type=Path,
-        default="datasets/botanic_garden",
+        default="datasets/botanic_garden_64",
         help="Path to the dataset root, default: %(default)s",
     )
     parser.add_argument(
         "--outputs",
         type=Path,
-        default="outputs/botanic_garden_loftr",
+        default="outputs/botanic_garden_64_loftr",
         help="Path to the output directory, default: %(default)s",
     )
     parser.add_argument(
